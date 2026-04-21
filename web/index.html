@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Tower Defense</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        canvas {
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+
+        class Enemy {
+            constructor(hp = 100, speed = 2, reward = 10, color = "#dc3232") {
+                this.path = PATH;
+                this.pathIndex = 1;
+                this.x = PATH[0][0];
+                this.y = PATH[0][1];
+                this.speed = speed;
+                this.hp = hp;
+                this.maxHp = hp;
+                this.reward = reward;
+                this.color = color;
+                this.alive = true;
+            }
+
+            update() {
+                const [targetX, targetY] = this.path[this.pathIndex];
+                const dx = targetX - this.x;
+                const dy = targetY - this.y;
+                const distance = Math.sqrt(dx**2 + dy**2);
+
+                if (distance < this.speed) {
+                    this.pathIndex++;
+                    if (this.pathIndex >= this.path.length) {
+                        this.alive = false;
+                    }
+                } else {
+                    this.x += (dx / distance) * this.speed;
+                    this.y += (dy / distance) * this.speed;
+                }
+            }
+
+            draw() {
+                // Тело врага
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Полоска HP
+                const barWidth = 24;
+                const hpRatio = this.hp / this.maxHp;
+                ctx.fillStyle = "#960000";
+                ctx.fillRect(this.x - 12, this.y - 22, barWidth, 4);
+                ctx.fillStyle = "#00dc00";
+                ctx.fillRect(this.x - 12, this.y - 22, barWidth * hpRatio, 4);
+            }
+        }
+
+        const PATH = [
+            [0, 300],
+            [200, 300],
+            [200, 150],
+            [500, 150],
+            [500, 450],
+            [800, 450]
+        ];
+
+        function drawPath() {
+            ctx.beginPath();
+            ctx.moveTo(PATH[0][0], PATH[0][1]);
+            for (let i = 1; i < PATH.length; i++) {
+                ctx.lineTo(PATH[i][0], PATH[i][1]);
+            }
+            ctx.strokeStyle = "#505050";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        class Bullet {
+            constructor(x, y, target) {
+                this.x = x;
+                this.y = y;
+                this.target = target;
+                this.speed = 5;
+                this.damage = 10;
+                this.alive = true;
+            }
+
+            update() {
+                if (!this.target.alive) {
+                    this.alive = false;
+                    return;
+                }
+
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const distance = Math.sqrt(dx**2 + dy**2);
+
+                if (distance < this.speed) {
+                    this.target.hp -= this.damage;
+                    if (this.target.hp <= 0) {
+                        this.target.alive = false;
+                    }
+                    this.alive = false;
+                } else {
+                    this.x += (dx / distance) * this.speed;
+                    this.y += (dy / distance) * this.speed;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffff00";
+                ctx.fill();
+            }
+        }
+
+        class Tower {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.range = 150;
+                this.fireRate = 60;
+                this.fireTimer = 0;
+            }
+
+            update(enemies) {
+                if (this.fireTimer > 0) {
+                    this.fireTimer--;
+                    return null;
+                }
+
+                for (const enemy of enemies) {
+                    if (!enemy.alive) continue;
+                    const dx = enemy.x - this.x;
+                    const dy = enemy.y - this.y;
+                    const distance = Math.sqrt(dx**2 + dy**2);
+                    if (distance <= this.range) {
+                        this.fireTimer = this.fireRate;
+                        return new Bullet(this.x, this.y, enemy);
+                    }
+                }
+
+                return null;
+            }
+
+            draw() {
+                // Квадрат башни
+                ctx.fillStyle = "#3296ff";
+                ctx.fillRect(this.x - 15, this.y - 15, 30, 30);
+
+                // Радиус
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+                ctx.strokeStyle = "rgba(50, 150, 255, 0.2)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        const WAVES = [
+            [{hp: 100, speed: 2, reward: 10, color: "#dc3232"}],
+            [{hp: 100, speed: 2, reward: 10, color: "#dc3232"},
+            {hp: 100, speed: 2, reward: 10, color: "#dc3232"},
+            {hp: 100, speed: 2, reward: 10, color: "#dc3232"},
+            {hp: 100, speed: 2, reward: 10, color: "#dc3232"},
+            {hp: 100, speed: 2, reward: 10, color: "#dc3232"}],
+            [{hp: 150, speed: 3, reward: 20, color: "#ff9600"}],
+            [{hp: 300, speed: 1, reward: 30, color: "#b400b4"}],
+        ];
+        const towers = [];
+        const bullets = [];
+
+        let money = 100;
+        let lives = 10;
+        let wave = 1;
+        let spawnTimer = 0;
+        const spawnDelay = 60;
+        let currentWave = [...WAVES[0]];
+        let gameOver = false;
+        const enemies = [];
+
+        // Клик — ставим башню
+        canvas.addEventListener("click", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            if (money >= 50) {
+                towers.push(new Tower(mx, my));
+                money -= 50;
+            }
+        });
+
+        function drawUI() {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "20px Arial";
+            ctx.fillText(`Деньги: ${money}$  Башня: 50$`, 10, 30);
+            ctx.fillStyle = "#ff6464";
+            ctx.fillText(`Жизни: ${lives}`, 10, 58);
+            ctx.fillStyle = "#64ff64";
+            ctx.fillText(`Волна: ${wave}`, 10, 86);
+        }
+
+        function gameLoop() {
+            ctx.fillStyle = "#1e1e1e";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawPath();
+
+            if (!gameOver) {
+                // Спаун врагов
+                if (currentWave.length > 0) {
+                    spawnTimer++;
+                    if (spawnTimer >= spawnDelay) {
+                        spawnTimer = 0;
+                        const params = currentWave.shift();
+                        enemies.push(new Enemy(params.hp, params.speed, params.reward, params.color));
+                    }
+                }
+
+                // Враги
+                for (const enemy of enemies) {
+                    if (enemy.alive) {
+                        enemy.update();
+                        enemy.draw();
+
+                        // Дошёл до конца
+                        if (!enemy.alive && enemy.pathIndex >= PATH.length) {
+                            lives--;
+                        }
+                    }
+                }
+
+                // Деньги за убийства
+                for (const enemy of enemies) {
+                    if (!enemy.alive && enemy.reward > 0) {
+                        money += enemy.reward;
+                        enemy.reward = 0;
+                    }
+                }
+
+                // Башни
+                for (const tower of towers) {
+                    const bullet = tower.update(enemies);
+                    if (bullet) bullets.push(bullet);
+                    tower.draw();
+                }
+
+                // Пули
+                for (const bullet of bullets) {
+                    if (bullet.alive) {
+                        bullet.update();
+                        bullet.draw();
+                    }
+                }
+
+                // Следующая волна
+                if (currentWave.length === 0 && enemies.every(e => !e.alive)) {
+                    wave++;
+                    if (wave > WAVES.length) {
+                        gameOver = true;
+                    } else {
+                        currentWave = [...WAVES[wave - 1]];
+                        money += 50;
+                    }
+                }
+
+                // Проигрыш
+                if (lives <= 0) gameOver = true;
+            }
+
+            drawUI();
+
+            // Game over экран
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0,0,0,0.6)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.font = "48px Arial";
+                ctx.textAlign = "center";
+                if (lives <= 0) {
+                    ctx.fillStyle = "#ff3232";
+                    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+                } else {
+                    ctx.fillStyle = "#32ff32";
+                    ctx.fillText("ТЫ ПОБЕДИЛ!", canvas.width / 2, canvas.height / 2);
+                }
+                ctx.textAlign = "left";
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
