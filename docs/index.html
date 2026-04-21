@@ -78,9 +78,13 @@
             [200, 150],
             [300, 150],
             [300, 450],
-            [450, 450],
-            [450, 550],
-            [800, 550]
+            [150, 450],
+            [150, 550],
+            [400, 550],
+            [400, 100],
+            [600, 100],
+            [600, 400],
+            [800, 400]
         ];
 
         function drawPath() {
@@ -139,7 +143,7 @@
                 this.x = x;
                 this.y = y;
                 this.range = 150;
-                this.fireRate = 60;
+                this.fireRate = 50;
                 this.fireTimer = 0;
             }
 
@@ -204,7 +208,15 @@
             const rect = canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
-            if (money >= 50) {
+
+            // Проверяем что рядом нет другой башни
+            const tooClose = towers.some(t => {
+                const dx = t.x - mx;
+                const dy = t.y - my;
+                return Math.sqrt(dx**2 + dy**2) < 30;
+            });
+
+            if (money >= 50 && !tooClose) {
                 towers.push(new Tower(mx, my));
                 money -= 50;
             }
