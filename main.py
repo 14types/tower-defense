@@ -1,6 +1,7 @@
 import pygame
 import sys
 from enemy import Enemy
+from tower import Tower
 
 pygame.init()
 
@@ -10,7 +11,6 @@ pygame.display.set_caption("Tower Defense")
 
 clock = pygame.time.Clock()
 
-# Путь врага — список точек (x, y)
 PATH = [
     (0, 300),
     (200, 300),
@@ -20,27 +20,49 @@ PATH = [
     (800, 450)
 ]
 
-# Создаём врага
-enemy = Enemy(PATH)
+enemies = [Enemy(PATH)]
+towers = []
+bullets = []
 
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            # Ставим башню по клику мыши
+            mx, my = pygame.mouse.get_pos()
+            towers.append(Tower(mx, my))
 
-    # Обновление
-    if enemy.alive:
-        enemy.update()
+    # Обновление врагов
+    for enemy in enemies:
+        if enemy.alive:
+            enemy.update()
+
+    # Обновление башен
+    for tower in towers:
+        bullet = tower.update(enemies)
+        if bullet:
+            bullets.append(bullet)
+
+    # Обновление пуль
+    for bullet in bullets:
+        bullet.update()
+    bullets = [b for b in bullets if b.alive]
 
     # Отрисовка
     screen.fill((30, 30, 30))
-
-    # Рисуем путь
     pygame.draw.lines(screen, (80, 80, 80), False, PATH, 3)
 
-    # Рисуем врага
-    enemy.draw(screen)
+    for enemy in enemies:
+        if enemy.alive:
+            enemy.draw(screen)
+
+    for tower in towers:
+        tower.draw(screen)
+
+    for bullet in bullets:
+        bullet.draw(screen)
 
     pygame.display.flip()
     clock.tick(60)
